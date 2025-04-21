@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://github.com/cgarey2014/shell_notes/main/assets/shell_notes.png" alt="Shell Notes Banner" width="600">
+  <img src="https://github.com/cgarey2014/shell_notes/main/assets/shell_notes.png](https://github.com/cgarey2014/Python/blob/main/shell_notes/assets/shell_notes.png" alt="Shell Notes Banner" width="600">
 </p>
 
 # Shell Notes
