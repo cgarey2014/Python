@@ -1,0 +1,199 @@
+# Author: Christopher R. Garey
+# Date: 2024-06-15
+# This program will let you review and optionally disconnect active Meraki clients using 2.4 GHz
+# Note: This script uses the Meraki Dashboard API and requires a valid API key.
+
+# Import necessary libraries
+import getpass
+import os
+import sys
+import time
+import warnings
+
+# Install this before importing the Meraki SDK, which loads urllib3.
+warnings.filterwarnings(
+    'ignore',
+    message=r'urllib3 v2 only supports OpenSSL.*',
+    category=Warning,
+)
+
+# Import the Meraki SDK after filtering warnings to avoid unnecessary output.
+import meraki
+from meraki.exceptions import APIError
+
+# Wait between requests so the script does not send disconnect jobs too quickly.
+# The Meraki API enforces a strict sustained rate limit of 1 request per 5 seconds per device for this endpoint to prevent network congestion.
+DISCONNECT_DELAY_SECONDS = 5
+
+# Ask the API for organizations and let the operator choose one.
+def get_organization_selection(dashboard):
+    try:
+        organizations = dashboard.organizations.getOrganizations()
+    except APIError as exc:
+        raise RuntimeError(f"Unable to fetch organizations: {exc}") from exc
+
+    if not organizations:
+        raise RuntimeError("No organizations are available for this API key.")
+
+    # Display the choices with both a friendly name and the ID used by the API.
+    # The operator will select an organization by number, and the function will return the ID and name of the selected organization.
+    print("\n=== Available Organizations ===")
+    for index, organization in enumerate(organizations, start=1):
+        print(f"[{index}] {organization['name']} (ID: {organization['id']})")
+
+    while True:
+        # Keep asking until the operator enters a number in the displayed range.
+        choice = input("\nSelect an organization number: ").strip()
+        if choice.isdigit() and 1 <= int(choice) <= len(organizations):
+            selected = organizations[int(choice) - 1]
+            return selected['id'], selected['name']
+        print("[!] Enter a valid organization number.")
+
+
+def get_network_selection(dashboard, organization_id):
+    # Fetch all networks belonging to the selected organization.
+    try:
+        networks = dashboard.organizations.getOrganizationNetworks(
+            organization_id,
+            total_pages='all',
+        )
+    except APIError as exc:
+        raise RuntimeError(f"Unable to fetch networks: {exc}") from exc
+
+    # Ignore networks that do not advertise wireless capability.
+    wireless_networks = [
+        network
+        for network in networks
+        if 'wireless' in network.get('productTypes', [])
+    ]
+
+    if not wireless_networks:
+        raise RuntimeError("No wireless networks were found in this organization.")
+
+    # Show only networks that can contain wireless clients.
+    # Display the choices with both a friendly name and the ID used by the API.
+    print("\n=== Available Wireless Networks ===")
+    for index, network in enumerate(wireless_networks, start=1):
+        print(f"[{index}] {network['name']} (ID: {network['id']})")
+
+    while True:
+        # Return the complete selected network object so the caller has its name and ID.
+        choice = input("\nSelect a network number: ").strip()
+        if choice.isdigit() and 1 <= int(choice) <= len(wireless_networks):
+            return wireless_networks[int(choice) - 1]
+        print("[!] Enter a valid network number.")
+
+# Define a function to retrieve active 2.4 GHz clients from the selected network.
+def get_active_24ghz_clients(dashboard, network_id):
+    # Retrieve clients seen recently; the API may return multiple pages of results.
+    # The timespan is set to 7200 seconds (2 hours) to capture clients that may have connected recently.
+    try:
+        clients = dashboard.networks.getNetworkClients(
+            networkId=network_id,
+            total_pages='all',
+            timespan=7200,
+        )
+    except APIError as exc:
+        raise RuntimeError(f"Unable to fetch clients: {exc}") from exc
+
+    # Keep only online wireless clients whose reported radio band is 2.4 GHz.
+    # The band field may be missing or have inconsistent formatting, so we normalize it for comparison.
+    # The Meraki API may return clients that are not currently connected, so we filter for 'Online' status.
+    # The recentDeviceMac field indicates the client is associated with a wireless AP.
+    # Return a list of clients that meet all criteria.
+    return [
+        client
+        for client in clients
+        if client.get('status') == 'Online'
+        and client.get('recentDeviceMac')
+        and str(client.get('band', '')).strip().lower() in {
+            '2.4 ghz',
+            '2.4ghz',
+            '2.4g',
+        }
+    ]
+
+
+def disconnect_clients(dashboard, organization_id, clients):
+    # Stop early when there is nothing to review or process.
+    if not clients:
+        print("[*] No active 2.4 GHz clients were found.")
+        return
+
+    # Always show the exact candidate list before taking any action.
+    print(f"\n=== Active 2.4 GHz Clients ({len(clients)}) ===")
+    for index, client in enumerate(clients, start=1):
+        identity = client.get('description') or client.get('mac') or client.get('id')
+        print(f"[{index}] {identity} | {client.get('mac', 'MAC unavailable')}")
+
+    # Require an unambiguous confirmation before queueing disconnect jobs.
+    confirmation = input(
+        "\nDo you want to disconnect these clients? Type DISCONNECT to continue: "
+    ).strip()
+    # Only proceed if the operator types the exact word "DISCONNECT" (case-sensitive).
+    if confirmation != 'DISCONNECT':
+        print("[-] Operation canceled. No clients were disconnected.")
+        return
+
+    # Track results separately because each client request can succeed or fail.
+    successful = 0
+    failed = 0
+    for index, client in enumerate(clients, start=1):
+        # Use a human-readable identity in progress messages, but send the API client ID.
+        # The Meraki API enforces a strict sustained rate limit of 1 request per 5 seconds per device for this endpoint to prevent network congestion.
+        # Avoid an unnecessary delay after the final request.
+        identity = client.get('description') or client.get('mac') or client.get('id')
+        print(f"[{index}/{len(clients)}] Disconnecting {identity}...")
+        try:
+            dashboard.organizations.createOrganizationWirelessDevicesLiveToolsClientDisconnect(
+                organizationId=organization_id,
+                clientId=client['id'],
+            )
+            successful += 1
+        except APIError as exc:
+            failed += 1
+            print(f"    [!] Failed: {exc}")
+
+        # Avoid an unnecessary delay after the final request.
+        if index < len(clients):
+            time.sleep(DISCONNECT_DELAY_SECONDS)
+
+    # Summarize the results after all requests have been attempted.
+    print(f"\nFinished: {successful} queued, {failed} failed.")
+    print("Clients may reconnect immediately, and the disconnect jobs are asynchronous.")
+
+
+def main():
+    # Use an existing environment variable or ask for the key without displaying it.
+    api_key = os.environ.get('MERAKI_API_KEY') or getpass.getpass(
+        'Enter your Meraki API key: '
+    ).strip()
+    if not api_key:
+        print('ERROR: An API key is required.', file=sys.stderr)
+        return 1
+
+    try:
+        # Create the Meraki SDK client used by the selection and action functions.
+        dashboard = meraki.DashboardAPI(api_key=api_key, suppress_logging=True)
+        organization_id, organization_name = get_organization_selection(dashboard)
+        network = get_network_selection(dashboard, organization_id)
+        # Show the selected organization and network before proceeding to fetch clients.
+        # The operator can verify the selections before any disconnect actions are taken.
+        print(f"\nSelected organization: {organization_name}")
+        print(f"Selected network: {network['name']} ({network['id']})")
+        clients = get_active_24ghz_clients(dashboard, network['id'])
+        disconnect_clients(dashboard, organization_id, clients)
+        return 0
+    # Handle specific exceptions to provide clear feedback to the user.
+    except (APIError, RuntimeError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("\nOperation canceled by user.", file=sys.stderr)
+        return 130
+
+
+if __name__ == '__main__':
+    # Run the program only when this file is executed directly, not when imported.
+    # The exit code from main() is used as the script's exit code.
+    raise SystemExit(main())
