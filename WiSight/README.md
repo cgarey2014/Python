@@ -1,3 +1,5 @@
+![WiSight dashboard](images/screenshot.jpeg)
+
 # WiSight 🚀
 
 WiSight is a real-time Wi‑Fi monitoring tool built in Python for macOS, Windows, and Linux. It displays your current Wi‑Fi connection details, tracks roaming events, and scans the local network for connected devices.
@@ -99,10 +101,6 @@ This helps identify devices connected to the same local network.
 - Some Wi‑Fi details may appear as `Unknown` or be partially hidden depending on the OS and permissions.
 - macOS may redact SSID/BSSID data in some environments.
 - Raw Layer‑2 scanning may require elevated privileges.
-
-## 🧪 Example output
-
-![WiSight dashboard](images/screenshot.jpeg)
 
 ## 📁 Project structure
 
