@@ -243,14 +243,7 @@ This helps identify devices connected to the same local network.
 
 ## 🧪 Example output
 
-```text
-WiSight
-Status: Connected
-SSID (Network): Home Wi‑Fi
-Connected AP (BSSID): AA:BB:CC:DD:EE:FF
-Signal: 82% (-55 dBm)
-Handovers: 2
-```
+![WiSight dashboard](images/screenshot.jpeg)
 
 ## 📁 Project structure
 
