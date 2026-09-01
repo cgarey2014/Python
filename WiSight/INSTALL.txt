@@ -1,0 +1,100 @@
+WiSight — Install & Run Guide (macOS)
+====================================
+
+What you need
+-------------
+- macOS (any recent version)
+- Python 3.8 or newer
+
+Check your Python version in Terminal:
+    python3 --version
+
+If you don't have Python, install it from https://www.python.org/downloads/macos/ or via Homebrew:
+    brew install python3
+
+How to run it
+-------------
+Open Terminal, then:
+
+1. Navigate to the WiSight folder:
+       cd ~/path/to/WiSight
+
+2. Run the script:
+      Sudo python3 wisight.py
+
+That's it. The script handles the rest.
+
+What happens on first run
+-------------------------
+WiSight will check for two Python packages it needs:
+
+- rich      — REQUIRED. Used to render the terminal interface.
+- scapy     — OPTIONAL. Used only for active network probing. The script
+              runs fine without it; that part just won't work.
+
+If either package is missing, the script will ask:
+
+    Would you like to automatically install them now? (y/n):
+
+Type y and press Enter. It will install them via pip3 and then launch.
+
+If you decline (type n), and rich is missing, the script will exit with an
+error — rich is mandatory.
+
+Manual install (if auto-install fails or you prefer to do it yourself)
+----------------------------------------------------------------------
+If the auto-install prompt doesn't appear, fails, or you just want to
+install the dependencies yourself ahead of time, run:
+
+    python3 -m pip3 install rich
+    python3 -m pip3 install scapy
+
+(Or install both at once:)
+
+    python3 -m pip3 install rich scapy
+
+If you get a "externally-managed-environment" error from pip, your system
+Python is locked down. Use one of these:
+
+Option A — install to your user account (recommended):
+    python3 -m pip3 install --user rich scapy
+
+Option B — use a virtual environment:
+    python3 -m venv wisight-venv
+    source wisight-venv/bin/activate
+    python3 -m pip3 install rich scapy
+    python3 wisight.py
+    (When done: deactivate)
+
+Re-running the script
+---------------------
+After the first successful run, all dependencies are already installed.
+You can simply run:
+
+    python3 wisight.py
+
+anytime you want to use WiSight.
+
+Stopping the script
+-------------------
+Press q to quit.
+
+Troubleshooting
+---------------
+- "ModuleNotFoundError: No module named 'rich'"
+  → Run: python3 -m pip3 install rich
+
+- "ModuleNotFoundError: No module named 'scapy'"
+  → Run: python3 -m pip3 install scapy
+  → Or ignore it; the script runs without it (active probing is disabled).
+
+- pip3 not found
+  → Use: python3 -m pip3 install <package>
+  → This invokes pip3 through the same Python interpreter.
+
+- Permission errors during install
+  → Use: python3 -m pip3 install --user rich scapy
+
+- Script exits immediately with no output
+  → Make sure you're running it from a real Terminal window, not from
+    a non-interactive context (like a cron job without a TTY).
